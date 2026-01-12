@@ -1,26 +1,26 @@
-name: Update Erregame CSV and Images
+name: Update Erregame Data and Images
 on:
   schedule:
-    - cron: '0 0 * * *' # Una volta al giorno è sufficiente per le immagini
-  workflow_dispatch:
+    - cron: '0 0 * * *' # Gira ogni notte alle 00:00
+  workflow_dispatch: # Ti permette di avviarlo a mano per testare
 
 jobs:
-  download_data:
+  update:
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.x'
+          python-version: '3.10'
 
       - name: Install dependencies
         run: pip install pandas requests
 
-      - name: Download CSV and Images
+      - name: Download and Process
         run: |
           python - <<EOF
           import pandas as pd
@@ -28,32 +28,43 @@ jobs:
           import os
           import time
 
-          # 1. Scarica il CSV simulando un browser
-          headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
+          headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36'}
           url_csv = "https://www.erregame.com/CSV/%7BAEA32292-14DB-4EF5-A687-1FB02B2143F5%7D.csv"
-          r = requests.get(url_csv, headers=headers)
-          with open('listino.csv', 'wb') as f:
-              f.write(r.content)
 
-          # 2. Crea cartella immagini
+          # 1. Scarica il CSV
+          print("Scaricando il CSV...")
+          res = requests.get(url_csv, headers=headers)
+          with open('listino.csv', 'wb') as f:
+              f.write(res.content)
+
+          # 2. Leggi il CSV con i parametri corretti scoperti dall'analisi
+          df = pd.read_csv('listino.csv', sep='\t', encoding='latin1')
+          
+          # 3. Crea cartella immagini se non esiste
           if not os.path.exists('images'):
               os.makedirs('images')
 
-          # 3. Leggi CSV e scarica immagini (limita a 100 per test o usa logica intelligente)
-          df = pd.read_csv('listino.csv', sep=None, engine='python')
-          # Supponendo che la colonna si chiami 'Foto' o 'Link Immagine'
-          # Modifica 'Foto' con il nome esatto della colonna nel tuo CSV
-          for index, row in df.head(100).iterrows(): 
-              img_url = row['Foto'] 
-              ean = str(row['EAN'])
-              if pd.notnull(img_url) and img_url.startswith('http'):
-                  try:
-                      img_data = requests.get(img_url, headers=headers, timeout=10).content
-                      with open(f'images/{ean}.jpg', 'wb') as handler:
-                          handler.write(img_data)
-                      time.sleep(0.5) # Pausa per non essere bannati
-                  except:
-                      print(f"Errore su {ean}")
+          # 4. Scarica le immagini (ne scarichiamo 100 alla volta per non sovraccaricare)
+          print("Inizio download immagini...")
+          downloaded = 0
+          for _, row in df.iterrows():
+              if downloaded >= 100: break 
+              
+              ean = str(row['Ean']).strip()
+              img_url = str(row['LinkImmagine']).strip()
+              
+              if img_url.startswith('http') and ean != 'nan':
+                  file_path = f"images/{ean}.jpg"
+                  if not os.path.exists(file_path):
+                      try:
+                          img_data = requests.get(img_url, headers=headers, timeout=15).content
+                          with open(file_path, 'wb') as h:
+                              h.write(img_data)
+                          print(f"Scaricato: {ean}.jpg")
+                          downloaded += 1
+                          time.sleep(1) # Pausa di 1 secondo tra le foto
+                      except:
+                          print(f"Errore su EAN {ean}")
           EOF
 
       - name: Commit and Push
@@ -61,5 +72,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "action@github.com"
           git add listino.csv images/*.jpg
-          git commit -m "Update CSV and Images" || echo "No changes"
+          git commit -m "Aggiornamento listino e immagini erregame" || echo "Nessuna modifica"
           git push

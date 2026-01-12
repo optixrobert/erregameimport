@@ -1,19 +1,20 @@
 name: Update Erregame CSV
 on:
   schedule:
-    - cron: '0 * * * *'
-  workflow_dispatch:
+    - cron: '0 * * * *' # Viene eseguito ogni ora
+  workflow_dispatch: # Ti permette di avviarlo manualmente dalla tab Actions
 
 jobs:
   download:
     runs-on: ubuntu-latest
-    permissions: # Forza i permessi di scrittura qui
-      contents: write
+    permissions:
+      contents: write # Fondamentale per permettere il salvataggio del file nel repo
     steps:
       - uses: actions/checkout@v4
       
       - name: Download CSV
         run: |
+          # Scarica il file usando l'URL originale e lo salva come listino.csv
           curl -L "https://www.erregame.com/CSV/%7BAEA32292-14DB-4EF5-A687-1FB02B2143F5%7D.csv" -o listino.csv
 
       - name: Commit and Push
@@ -21,10 +22,6 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add listino.csv
-          # Il comando seguente evita l'errore se il file non è cambiato
+          # Registra le modifiche solo se il file è effettivamente cambiato
           git commit -m "Update listino.csv" || echo "No changes to commit"
           git push
-          git commit -m "Aggiornamento listino e immagini" || echo "Nessuna modifica da salvare"
-          
-          # Push con retry per evitare problemi di rete temporanei
-          git push origin main || echo "Push fallito o non necessario"

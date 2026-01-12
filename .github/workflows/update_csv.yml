@@ -1,14 +1,14 @@
 name: Update Erregame Data and Images
 on:
   schedule:
-    - cron: '0 0 * * *' # Gira ogni notte alle 00:00
-  workflow_dispatch: # Ti permette di avviarlo a mano per testare
+    - cron: '0 0 * * *' # Si esegue ogni notte a mezzanotte
+  workflow_dispatch: # Permette l'avvio manuale cliccando su "Run Workflow"
 
 jobs:
   update:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: write # Necessario per permettere a GitHub di salvare i file nel repo
     steps:
       - uses: actions/checkout@v4
 
@@ -28,49 +28,27 @@ jobs:
           import os
           import time
 
-          headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36'}
+          # Header per simulare un browser ed evitare il blocco di Erregame
+          headers = {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36'
+          }
           url_csv = "https://www.erregame.com/CSV/%7BAEA32292-14DB-4EF5-A687-1FB02B2143F5%7D.csv"
 
-          # 1. Scarica il CSV
-          print("Scaricando il CSV...")
-          res = requests.get(url_csv, headers=headers)
-          with open('listino.csv', 'wb') as f:
-              f.write(res.content)
+          # 1. Scarica il file CSV originale
+          print("Scaricando il listino CSV...")
+          try:
+              res = requests.get(url_csv, headers=headers)
+              res.raise_for_status()
+              with open('listino.csv', 'wb') as f:
+                  f.write(res.content)
+              print("CSV scaricato con successo.")
+          except Exception as e:
+              print(f"Errore critico nel download del CSV: {e}")
+              exit(1)
 
-          # 2. Leggi il CSV con i parametri corretti scoperti dall'analisi
-          df = pd.read_csv('listino.csv', sep='\t', encoding='latin1')
-          
-          # 3. Crea cartella immagini se non esiste
-          if not os.path.exists('images'):
-              os.makedirs('images')
-
-          # 4. Scarica le immagini (ne scarichiamo 100 alla volta per non sovraccaricare)
-          print("Inizio download immagini...")
-          downloaded = 0
-          for _, row in df.iterrows():
-              if downloaded >= 100: break 
-              
-              ean = str(row['Ean']).strip()
-              img_url = str(row['LinkImmagine']).strip()
-              
-              if img_url.startswith('http') and ean != 'nan':
-                  file_path = f"images/{ean}.jpg"
-                  if not os.path.exists(file_path):
-                      try:
-                          img_data = requests.get(img_url, headers=headers, timeout=15).content
-                          with open(file_path, 'wb') as h:
-                              h.write(img_data)
-                          print(f"Scaricato: {ean}.jpg")
-                          downloaded += 1
-                          time.sleep(1) # Pausa di 1 secondo tra le foto
-                      except:
-                          print(f"Errore su EAN {ean}")
-          EOF
-
-      - name: Commit and Push
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "action@github.com"
-          git add listino.csv images/*.jpg
-          git commit -m "Aggiornamento listino e immagini erregame" || echo "Nessuna modifica"
-          git push
+          # 2. Carica i dati (Separatore Tabulatore e Encoding Latin1 come nel file analizzato)
+          try:
+              df = pd.read_csv('listino.csv', sep='\t', encoding='latin1')
+              print(f"Dati caricati: {len(df)} prodotti trovati.")
+          except Exception as e:
+              print(f"Errore nella lettura del CSV: {e}")

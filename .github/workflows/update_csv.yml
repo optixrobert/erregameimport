@@ -1,94 +1,29 @@
-name: Update Erregame Data and Images
+name: Update Erregame CSV
 on:
   schedule:
-    - cron: '0 0 * * *'
+    - cron: '0 * * * *'
   workflow_dispatch:
 
 jobs:
-  update:
+  download:
     runs-on: ubuntu-latest
-    permissions:
+    permissions: # Forza i permessi di scrittura qui
       contents: write
     steps:
       - uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.10'
-
-      - name: Install dependencies
-        run: pip install pandas requests
-
-      - name: Download and Process
+      
+      - name: Download CSV
         run: |
-          python - <<EOF
-          import pandas as pd
-          import requests
-          import os
-          import time
-
-          headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36'}
-          url_csv = "https://www.erregame.com/CSV/%7BAEA32292-14DB-4EF5-A687-1FB02B2143F5%7D.csv"
-
-          # 1. Download CSV
-          print("--- Step 1: Download CSV ---")
-          res = requests.get(url_csv, headers=headers)
-          res.raise_for_status()
-          with open('listino.csv', 'wb') as f:
-              f.write(res.content)
-          print("CSV scaricato.")
-
-          # 2. Caricamento dati
-          print("--- Step 2: Lettura dati ---")
-          # Usiamo sep='\t' e latin1 come confermato dal file inviato
-          df = pd.read_csv('listino.csv', sep='\t', encoding='latin1')
-          print(f"Prodotti totali: {len(df)}")
-
-          # 3. Cartella immagini
-          if not os.path.exists('images'):
-              os.makedirs('images')
-              print("Cartella images creata.")
-
-          # 4. Download 50 immagini per volta
-          print("--- Step 3: Download Immagini ---")
-          downloaded = 0
-          for _, row in df.iterrows():
-              if downloaded >= 50: break
-              
-              ean = str(row['Ean']).strip()
-              img_url = str(row['LinkImmagine']).strip()
-              
-              if img_url.startswith('http') and ean != 'nan' and len(ean) > 5:
-                  # Gestione nomi file: alcuni URL finiscono con .bmp.jpg o simili, noi salviamo come .jpg
-                  file_path = f"images/{ean}.jpg"
-                  
-                  if not os.path.exists(file_path):
-                      try:
-                          img_res = requests.get(img_url, headers=headers, timeout=15)
-                          if img_res.status_code == 200:
-                              with open(file_path, 'wb') as h:
-                                  h.write(img_res.content)
-                              print(f"Scaricata: {ean}.jpg")
-                              downloaded += 1
-                              time.sleep(1)
-                      except Exception as e:
-                          print(f"Errore su {ean}: {e}")
-          
-          print(f"Fine sessione. Scaricate {downloaded} nuove immagini.")
-          EOF
+          curl -L "https://www.erregame.com/CSV/%7BAEA32292-14DB-4EF5-A687-1FB02B2143F5%7D.csv" -o listino.csv
 
       - name: Commit and Push
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          
-          # Creiamo un file .gitkeep se la cartella è vuota per evitare errori di git add
-          touch images/.gitkeep
-          
-          git add listino.csv images/
-          
-          # Il comando commit non fallisce se non ci sono cambiamenti
+          git add listino.csv
+          # Il comando seguente evita l'errore se il file non è cambiato
+          git commit -m "Update listino.csv" || echo "No changes to commit"
+          git push
           git commit -m "Aggiornamento listino e immagini" || echo "Nessuna modifica da salvare"
           
           # Push con retry per evitare problemi di rete temporanei
